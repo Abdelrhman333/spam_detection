@@ -1,66 +1,26 @@
-# app.py
-# ------------------------------------------------------------------
-# Spam / Ham email classifier — Flask web app
-# Wraps the TF-IDF + Multinomial Naive Bayes pipeline in a small API
-# and serves a single-page UI to test messages live.
-# ------------------------------------------------------------------
 
 import os
+import joblib
 from flask import Flask, request, jsonify, render_template_string
 
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.metrics import accuracy_score
 
-# ------------------------------------------------------------------
-# 1. Load & prepare the dataset
-# ------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_PATH = os.path.join(BASE_DIR, "spam.csv")
+MODEL_PATH = os.path.join(BASE_DIR, "spam_model.joblib")
 
-if not os.path.exists(DATA_PATH):
+if not os.path.exists(MODEL_PATH):
     raise FileNotFoundError(
-        f"\n\nمقدرش ألاقي ملف spam.csv في:\n{DATA_PATH}\n"
-        "حط ملف spam.csv جنب app.py وشغّل تاني.\n"
+        f"\nfile doesn't exist\n"
     )
 
-df = pd.read_csv(DATA_PATH, encoding="latin-1")
+bundle = joblib.load(MODEL_PATH)
+tfidf = bundle["tfidf"]
+model = bundle["model"]
+TEST_ACCURACY = bundle["accuracy"]
 
-# The common Kaggle "spam.csv" has extra empty/unnamed columns — keep only
-# the first two (label, message) so this works whether they exist or not.
-df = df.iloc[:, :2]
-df.columns = ["label", "message"]
-df = df.dropna(subset=["label", "message"])
-
-df["label"] = df["label"].str.strip().str.lower().map({"ham": 0, "spam": 1})
-df = df.dropna(subset=["label"])
-df["label"] = df["label"].astype(int)
-
-X = df["message"]
-y = df["label"]
+print(f"[spam-checker] model loaded — held-out test accuracy: {TEST_ACCURACY}%")
 
 # ------------------------------------------------------------------
-# 2. Vectorize + train/test split (mirrors the original notebook)
-# ------------------------------------------------------------------
-tfidf = TfidfVectorizer(stop_words="english", max_features=3000)
-X_tfidf = tfidf.fit_transform(X)
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X_tfidf, y, test_size=0.2, random_state=42
-)
-
-model = MultinomialNB()
-model.fit(X_train, y_train)
-
-test_pred = model.predict(X_test)
-TEST_ACCURACY = round(accuracy_score(y_test, test_pred) * 100, 2)
-
-print(f"[spam-checker] model trained — held-out test accuracy: {TEST_ACCURACY}%")
-
-# ------------------------------------------------------------------
-# 3. Flask app
+# 2. Flask app
 # ------------------------------------------------------------------
 app = Flask(__name__)
 
@@ -363,4 +323,5 @@ def predict():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
